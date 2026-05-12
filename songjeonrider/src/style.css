@@ -1,0 +1,88 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  font-family: 'Segoe UI', sans-serif;
+  color: #fff;
+}
+
+#renderCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+#hint {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  border-radius: 6px;
+  pointer-events: none;
+  user-select: none;
+}
+
+#hud {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  min-width: 200px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: 'Consolas', monospace;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.hud-label {
+  color: #9bbcff;
+  font-size: 11px;
+  letter-spacing: 1px;
+  min-width: 50px;
+}
+.hud-row span:nth-child(2) {
+  font-size: 22px;
+  font-weight: bold;
+  flex: 1;
+  text-align: right;
+}
+.hud-unit {
+  font-size: 11px;
+  color: #888;
+}
+
+.hud-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 4px 0 8px;
+}
+#hud-boost-bar {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ffa040, #ff5050);
+  transition: width 0.08s linear;
+}
+
+#hud-state {
+  font-size: 12px;
+  color: #ffd060;
+  min-height: 16px;
+  text-align: right;
+}

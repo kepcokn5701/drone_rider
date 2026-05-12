@@ -1,0 +1,16 @@
+@'
+# 사내 점검 자료 (외부 공개 X)
+드론 설비점검방법 및 점검양식/
+*.pdf
+
+# Node 빌드 산출물
+songjeonrider/node_modules/
+songjeonrider/dist/
+songjeonrider/.vite/
+songjeonrider/.vercel/
+songjeonrider/node_modules/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+'@ | Out-File -Encoding utf8 .gitignore

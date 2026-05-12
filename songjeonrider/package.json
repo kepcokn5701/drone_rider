@@ -1,0 +1,21 @@
+{
+  "name": "songjeonrider",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^9.6.2",
+    "@babylonjs/gui": "^9.6.2",
+    "@babylonjs/loaders": "^9.6.2",
+    "@babylonjs/materials": "^9.6.2"
+  }
+}
