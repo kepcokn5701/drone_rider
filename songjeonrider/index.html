@@ -2,12 +2,19 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
     <title>Drone Rider — M2</title>
   </head>
   <body>
     <canvas id="renderCanvas" touch-action="none"></canvas>
     <div id="hint">W/S 가속·감속 · A/D 회전 · Space 부스터 · Shift 드리프트(부스터 충전)</div>
+    <div id="touch-controls">
+      <div id="joystick"><div id="joystick-knob"></div></div>
+      <div id="mobile-buttons">
+        <button id="btn-drift" class="mobile-btn drift" type="button">🌀</button>
+        <button id="btn-boost" class="mobile-btn boost" type="button">🔥</button>
+      </div>
+    </div>
     <div id="hud">
       <div class="hud-row"><span class="hud-label">SPEED</span><span id="hud-speed">0</span><span class="hud-unit">km/h</span></div>
       <div class="hud-row"><span class="hud-label">BOOST</span><span id="hud-boost">100</span><span class="hud-unit">%</span></div>

@@ -106,15 +106,61 @@ SceneLoader.LoadAssetContainerAsync(
   "modular_electricity_poles_2k.gltf",
   scene,
 ).then((container) => {
-  for (let i = 0; i < TOWER_COUNT; i++) {
-    const entries = container.instantiateModelsToScene(
-      (name) => `tower_${i}_${name}`,
-      false,
+  container.addAllToScene();
+
+  const meshes = container.meshes.filter((m) => m.getTotalVertices() > 0);
+
+  console.log("=== modular_electricity_poles 메쉬 분석 ===");
+  meshes.forEach((m, i) => {
+    m.computeWorldMatrix(true);
+    const bb = m.getBoundingInfo().boundingBox.extendSize;
+    const ratio = bb.y / Math.max(bb.x, bb.z, 0.01);
+    console.log(
+      `[${i}] ${m.name} verts:${m.getTotalVertices()} size:(${bb.x.toFixed(1)}, ${bb.y.toFixed(1)}, ${bb.z.toFixed(1)}) verticalRatio:${ratio.toFixed(2)}`,
     );
-    const root = entries.rootNodes[0] as TransformNode | undefined;
-    if (root) {
-      root.position.set(0, 0, TOWER_BASE_Z + i * TOWER_SPACING);
-      root.scaling.setAll(TOWER_SCALE);
+  });
+
+  let mainPole: Mesh | null = null;
+  let bestY = 0;
+  meshes.forEach((m) => {
+    const bb = m.getBoundingInfo().boundingBox.extendSize;
+    const ratio = bb.y / Math.max(bb.x, bb.z, 0.01);
+    if (ratio > 1.5 && bb.y > bestY && m.getTotalVertices() > 100) {
+      bestY = bb.y;
+      mainPole = m as Mesh;
+    }
+  });
+
+  if (mainPole) {
+    const pole = mainPole as Mesh;
+    console.log("[메인 폴 선택]", pole.name, "height(extent):", bestY.toFixed(2));
+
+    meshes.forEach((m) => {
+      if (m !== pole) m.setEnabled(false);
+    });
+
+    pole.setParent(null);
+    pole.position.set(0, 0, TOWER_BASE_Z);
+    pole.rotation.set(0, 0, 0);
+    pole.scaling.setAll(TOWER_SCALE);
+
+    for (let i = 1; i < TOWER_COUNT; i++) {
+      const inst = pole.createInstance(`pole_inst_${i}`);
+      inst.position.set(0, 0, TOWER_BASE_Z + i * TOWER_SPACING);
+      inst.scaling.setAll(TOWER_SCALE);
+    }
+  } else {
+    console.warn("[메인 폴 미탐] fallback: 전체 키트를 6개 인스턴스화");
+    for (let i = 0; i < TOWER_COUNT; i++) {
+      const entries = container.instantiateModelsToScene(
+        (name) => `tower_${i}_${name}`,
+        false,
+      );
+      const root = entries.rootNodes[0] as TransformNode | undefined;
+      if (root) {
+        root.position.set(0, 0, TOWER_BASE_Z + i * TOWER_SPACING);
+        root.scaling.setAll(TOWER_SCALE);
+      }
     }
   }
 });
@@ -210,6 +256,83 @@ window.addEventListener("keyup", (e) => {
   input[e.code] = false;
 });
 const press = (...keys: string[]) => keys.some((k) => input[k.toLowerCase()]);
+
+const joystickEl = document.getElementById("joystick");
+const joystickKnobEl = document.getElementById("joystick-knob");
+const btnBoostEl = document.getElementById("btn-boost");
+const btnDriftEl = document.getElementById("btn-drift");
+
+const setupJoystick = () => {
+  if (!joystickEl || !joystickKnobEl) return;
+  let activePointer: number | null = null;
+  const maxRadius = 55;
+  const threshold = 0.3;
+
+  const resetInputs = () => {
+    input["w"] = false;
+    input["s"] = false;
+    input["a"] = false;
+    input["d"] = false;
+    joystickKnobEl.style.transform = "translate(0px, 0px)";
+  };
+
+  const onMove = (clientX: number, clientY: number) => {
+    const rect = joystickEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxRadius) {
+      dx = (dx / dist) * maxRadius;
+      dy = (dy / dist) * maxRadius;
+    }
+    joystickKnobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+    const nx = dx / maxRadius;
+    const ny = dy / maxRadius;
+    input["a"] = nx < -threshold;
+    input["d"] = nx > threshold;
+    input["w"] = ny < -threshold;
+    input["s"] = ny > threshold;
+  };
+
+  joystickEl.addEventListener("pointerdown", (e) => {
+    activePointer = e.pointerId;
+    joystickEl.setPointerCapture(e.pointerId);
+    onMove(e.clientX, e.clientY);
+  });
+  joystickEl.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== activePointer) return;
+    onMove(e.clientX, e.clientY);
+  });
+  const endTouch = (e: PointerEvent) => {
+    if (e.pointerId !== activePointer) return;
+    activePointer = null;
+    resetInputs();
+  };
+  joystickEl.addEventListener("pointerup", endTouch);
+  joystickEl.addEventListener("pointercancel", endTouch);
+};
+
+const bindButton = (btn: HTMLElement | null, key: string) => {
+  if (!btn) return;
+  const down = (e: Event) => {
+    e.preventDefault();
+    input[key] = true;
+  };
+  const up = (e: Event) => {
+    e.preventDefault();
+    input[key] = false;
+  };
+  btn.addEventListener("pointerdown", down);
+  btn.addEventListener("pointerup", up);
+  btn.addEventListener("pointercancel", up);
+  btn.addEventListener("pointerleave", up);
+};
+
+setupJoystick();
+bindButton(btnBoostEl, " ");
+bindButton(btnDriftEl, "shift");
 
 const speedEl = document.getElementById("hud-speed");
 const boostEl = document.getElementById("hud-boost");

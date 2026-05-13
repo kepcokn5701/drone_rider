@@ -86,3 +86,81 @@ html, body {
   min-height: 16px;
   text-align: right;
 }
+
+#touch-controls {
+  display: none;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  #touch-controls { display: block; }
+  #hint { display: none; }
+}
+
+#joystick {
+  position: absolute;
+  left: 36px;
+  bottom: 36px;
+  width: 150px;
+  height: 150px;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin-left: -32px;
+  margin-top: -32px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: transform 0.05s linear;
+}
+
+#mobile-buttons {
+  position: absolute;
+  right: 36px;
+  bottom: 36px;
+  display: flex;
+  gap: 18px;
+  pointer-events: auto;
+}
+
+.mobile-btn {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  color: white;
+  font-size: 34px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+.mobile-btn.boost {
+  background: rgba(255, 80, 80, 0.55);
+}
+.mobile-btn.boost:active {
+  background: rgba(255, 50, 50, 0.95);
+  transform: scale(0.94);
+}
+.mobile-btn.drift {
+  background: rgba(80, 150, 255, 0.55);
+}
+.mobile-btn.drift:active {
+  background: rgba(50, 100, 255, 0.95);
+  transform: scale(0.94);
+}
