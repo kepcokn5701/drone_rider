@@ -260,10 +260,7 @@ const press = (...keys: string[]) => keys.some((k) => input[k.toLowerCase()]);
 const isTouchDevice =
   "ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0;
 if (isTouchDevice) {
-  const tc = document.getElementById("touch-controls");
-  const hintEl = document.getElementById("hint");
-  if (tc) (tc as HTMLElement).style.display = "block";
-  if (hintEl) (hintEl as HTMLElement).style.display = "none";
+  document.body.classList.add("is-touch");
 }
 
 const joystickEl = document.getElementById("joystick");
@@ -274,7 +271,7 @@ const btnDriftEl = document.getElementById("btn-drift");
 const setupJoystick = () => {
   if (!joystickEl || !joystickKnobEl) return;
   let activePointer: number | null = null;
-  const maxRadius = 55;
+  const maxRadius = 42;
   const threshold = 0.3;
 
   const resetInputs = () => {
