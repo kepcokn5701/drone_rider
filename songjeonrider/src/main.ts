@@ -1,6 +1,7 @@
 import "./style.css";
 import {
   Viewer,
+  Ion,
   Cartesian3,
   Cartesian2,
   Color,
@@ -14,6 +15,8 @@ import {
   VerticalOrigin,
 } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+
+Ion.defaultAccessToken = (import.meta.env.VITE_CESIUM_ION_TOKEN as string) ?? "";
 
 const KEPCO_GNB_LNG = 128.692;
 const KEPCO_GNB_LAT = 35.227;
@@ -33,9 +36,16 @@ const viewer = new Viewer("cesiumContainer", {
   shouldAnimate: true,
 });
 
-viewer.scene.globe.enableLighting = true;
-if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
-if (viewer.scene.fog) viewer.scene.fog.enabled = true;
+viewer.imageryLayers.removeAll();
+viewer.scene.globe.baseColor = Color.fromCssColorString("#2a3441");
+viewer.scene.globe.showGroundAtmosphere = false;
+viewer.scene.globe.enableLighting = false;
+viewer.scene.skyBox.show = false;
+viewer.scene.sun.show = false;
+viewer.scene.moon.show = false;
+if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
+if (viewer.scene.fog) viewer.scene.fog.enabled = false;
+viewer.scene.backgroundColor = Color.fromCssColorString("#0a0e14");
 
 viewer.entities.add({
   position: Cartesian3.fromDegrees(KEPCO_GNB_LNG, KEPCO_GNB_LAT, 50),
@@ -92,6 +102,7 @@ const droneOriCallback = new CallbackProperty(() => {
 const droneEntity = viewer.entities.add({
   position: dronePosCallback as unknown as ConstantPositionProperty,
   orientation: droneOriCallback as any,
+  viewFrom: new Cartesian3(0, -60, 30),
   box: {
     dimensions: new Cartesian3(4, 4, 1.2),
     material: Color.RED.withAlpha(0.95),
