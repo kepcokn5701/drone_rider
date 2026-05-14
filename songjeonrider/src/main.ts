@@ -257,6 +257,15 @@ window.addEventListener("keyup", (e) => {
 });
 const press = (...keys: string[]) => keys.some((k) => input[k.toLowerCase()]);
 
+const isTouchDevice =
+  "ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0;
+if (isTouchDevice) {
+  const tc = document.getElementById("touch-controls");
+  const hintEl = document.getElementById("hint");
+  if (tc) (tc as HTMLElement).style.display = "block";
+  if (hintEl) (hintEl as HTMLElement).style.display = "none";
+}
+
 const joystickEl = document.getElementById("joystick");
 const joystickKnobEl = document.getElementById("joystick-knob");
 const btnBoostEl = document.getElementById("btn-boost");
