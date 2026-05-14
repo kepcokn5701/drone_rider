@@ -34,8 +34,8 @@ const viewer = new Viewer("cesiumContainer", {
 });
 
 viewer.scene.globe.enableLighting = true;
-viewer.scene.skyAtmosphere.show = true;
-viewer.scene.fog.enabled = true;
+if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
+if (viewer.scene.fog) viewer.scene.fog.enabled = true;
 
 viewer.entities.add({
   position: Cartesian3.fromDegrees(KEPCO_GNB_LNG, KEPCO_GNB_LAT, 50),
