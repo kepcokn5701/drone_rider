@@ -36,16 +36,21 @@ const viewer = new Viewer("cesiumContainer", {
   shouldAnimate: true,
 });
 
-viewer.imageryLayers.removeAll();
-viewer.scene.globe.baseColor = Color.fromCssColorString("#2a3441");
-viewer.scene.globe.showGroundAtmosphere = false;
-viewer.scene.globe.enableLighting = false;
-if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
-if (viewer.scene.sun) viewer.scene.sun.show = false;
-if (viewer.scene.moon) viewer.scene.moon.show = false;
-if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
-if (viewer.scene.fog) viewer.scene.fog.enabled = false;
-viewer.scene.backgroundColor = Color.fromCssColorString("#0a0e14");
+const offlineMode =
+  location.hostname === "localhost" || location.hostname === "127.0.0.1";
+
+if (offlineMode) {
+  viewer.imageryLayers.removeAll();
+  viewer.scene.globe.baseColor = Color.fromCssColorString("#2a3441");
+  viewer.scene.globe.showGroundAtmosphere = false;
+  viewer.scene.globe.enableLighting = false;
+  if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+  if (viewer.scene.sun) viewer.scene.sun.show = false;
+  if (viewer.scene.moon) viewer.scene.moon.show = false;
+  if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
+  if (viewer.scene.fog) viewer.scene.fog.enabled = false;
+  viewer.scene.backgroundColor = Color.fromCssColorString("#0a0e14");
+}
 
 viewer.entities.add({
   position: Cartesian3.fromDegrees(KEPCO_GNB_LNG, KEPCO_GNB_LAT, 50),
