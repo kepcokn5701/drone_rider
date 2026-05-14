@@ -3,29 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
-    <title>Drone Rider — M2</title>
+    <title>Drone Rider — Cesium v0.6</title>
   </head>
   <body>
-    <canvas id="renderCanvas" touch-action="none"></canvas>
-    <div id="hint">W/S 가속·감속 · A/D 회전 · Space 부스터 · Shift 드리프트(부스터 충전)</div>
-    <div id="touch-controls">
-      <div id="joystick"><div id="joystick-knob"></div></div>
-      <div id="mobile-buttons">
-        <button id="btn-drift" class="mobile-btn drift" type="button">
-          <span class="btn-icon">🌀</span>
-          <span class="btn-label">DRIFT</span>
-        </button>
-        <button id="btn-boost" class="mobile-btn boost" type="button">
-          <span class="btn-icon">🔥</span>
-          <span class="btn-label">BOOST</span>
-        </button>
-      </div>
-    </div>
+    <div id="cesiumContainer"></div>
+    <div id="hint">W/S 가속·감속 · A/D 회전 · Q/E 고도 · 마우스 드래그·휠로 시점·줌</div>
     <div id="hud">
       <div class="hud-row"><span class="hud-label">SPEED</span><span id="hud-speed">0</span><span class="hud-unit">km/h</span></div>
-      <div class="hud-row"><span class="hud-label">BOOST</span><span id="hud-boost">100</span><span class="hud-unit">%</span></div>
-      <div class="hud-bar"><div id="hud-boost-bar"></div></div>
-      <div id="hud-state">—</div>
+      <div class="hud-row"><span class="hud-label">ALT</span><span id="hud-alt">80</span><span class="hud-unit">m</span></div>
+      <div class="hud-row"><span class="hud-label">HDG</span><span id="hud-heading">0</span><span class="hud-unit">°</span></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

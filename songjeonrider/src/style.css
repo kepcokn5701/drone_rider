@@ -5,16 +5,15 @@ html, body {
   width: 100%;
   height: 100%;
   background: #000;
-  font-family: 'Segoe UI', sans-serif;
+  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
   color: #fff;
 }
 
-#renderCanvas {
+#cesiumContainer {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  display: block;
-  outline: none;
-  touch-action: none;
 }
 
 #hint {
@@ -22,41 +21,50 @@ html, body {
   left: 12px;
   bottom: 12px;
   padding: 8px 14px;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   font-size: 13px;
   border-radius: 6px;
   pointer-events: none;
   user-select: none;
+  z-index: 1000;
+}
+
+/* Cesium UI 일부 톤 조정 */
+.cesium-credit-textContainer,
+.cesium-widget-credits {
+  font-size: 10px;
+  opacity: 0.6;
 }
 
 #hud {
   position: fixed;
   right: 16px;
   bottom: 16px;
-  min-width: 200px;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.6);
+  min-width: 170px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.65);
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   font-family: 'Consolas', monospace;
   pointer-events: none;
   user-select: none;
+  z-index: 1000;
 }
 
 .hud-row {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .hud-label {
   color: #9bbcff;
   font-size: 11px;
   letter-spacing: 1px;
-  min-width: 50px;
+  min-width: 44px;
 }
 .hud-row span:nth-child(2) {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: bold;
   flex: 1;
   text-align: right;
@@ -64,145 +72,4 @@ html, body {
 .hud-unit {
   font-size: 11px;
   color: #888;
-}
-
-.hud-bar {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-  overflow: hidden;
-  margin: 4px 0 8px;
-}
-#hud-boost-bar {
-  height: 100%;
-  width: 100%;
-  background: linear-gradient(90deg, #ffa040, #ff5050);
-  transition: width 0.08s linear;
-}
-
-#hud-state {
-  font-size: 12px;
-  color: #ffd060;
-  min-height: 16px;
-  text-align: right;
-}
-
-#touch-controls {
-  display: none;
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 100;
-}
-
-@media (hover: none) and (pointer: coarse) {
-  #touch-controls { display: block; }
-  #hint { display: none; }
-}
-
-body.is-touch #touch-controls { display: block; }
-body.is-touch #hint { display: none; }
-
-body.is-touch #hud {
-  top: 14px;
-  bottom: auto;
-  right: 14px;
-  min-width: 150px;
-  padding: 8px 12px;
-}
-body.is-touch .hud-row span:nth-child(2) {
-  font-size: 17px;
-}
-
-#joystick {
-  position: absolute;
-  left: 28px;
-  bottom: 28px;
-  width: 120px;
-  height: 120px;
-  border: 2px solid rgba(255, 255, 255, 0.5);
-  background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.08) 0%, rgba(0, 0, 0, 0.4) 75%);
-  border-radius: 50%;
-  pointer-events: auto;
-  touch-action: none;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45), inset 0 2px 4px rgba(255, 255, 255, 0.12);
-}
-
-#joystick-knob {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 52px;
-  height: 52px;
-  margin-left: -26px;
-  margin-top: -26px;
-  background: radial-gradient(circle at 50% 30%, #ffffff 0%, #d8d8d8 65%, #a8a8a8 100%);
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  border-radius: 50%;
-  pointer-events: none;
-  transition: transform 0.05s linear;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 2px 5px rgba(255, 255, 255, 0.55);
-}
-
-#mobile-buttons {
-  position: absolute;
-  right: 28px;
-  bottom: 28px;
-  display: flex;
-  gap: 14px;
-  pointer-events: auto;
-}
-
-.mobile-btn {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.55);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 2px 6px rgba(255, 255, 255, 0.2);
-  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
-  padding: 0;
-}
-
-.btn-icon {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.btn-label {
-  font-size: 9px;
-  letter-spacing: 1.2px;
-  font-family: 'Consolas', 'Menlo', monospace;
-  font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-.mobile-btn.boost {
-  background: radial-gradient(circle at 50% 30%, #ff9070 0%, #ff3530 75%);
-}
-.mobile-btn.boost:active {
-  background: radial-gradient(circle at 50% 30%, #ffb090 0%, #ff5050 75%);
-  transform: scale(0.92);
-  box-shadow: 0 0 24px rgba(255, 80, 60, 0.85), 0 2px 6px rgba(0, 0, 0, 0.45);
-  filter: brightness(1.15);
-}
-
-.mobile-btn.drift {
-  background: radial-gradient(circle at 50% 30%, #7bbfff 0%, #2470d8 75%);
-}
-.mobile-btn.drift:active {
-  background: radial-gradient(circle at 50% 30%, #9bd4ff 0%, #4090ee 75%);
-  transform: scale(0.92);
-  box-shadow: 0 0 24px rgba(90, 160, 255, 0.85), 0 2px 6px rgba(0, 0, 0, 0.45);
-  filter: brightness(1.15);
 }
