@@ -19,12 +19,20 @@ import {
   Math as CMath,
 } from "cesium";
 import type { ConstantPositionProperty } from "cesium";
+import {
+  createGooglePhotorealistic3DTileset,
+  createOsmBuildingsAsync,
+  Cesium3DTileStyle,
+  ClippingPlane,
+  ClippingPlaneCollection,
+} from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
-import { buildWorld } from "./world";
+import { buildWorld, buildPowerInfraOnly } from "./world";
 
 const ENV = import.meta.env as Record<string, string | undefined>;
 Ion.defaultAccessToken = ENV.VITE_CESIUM_ION_TOKEN ?? "";
 const VWORLD_KEY = ENV.VITE_VWORLD_KEY ?? "";
+const GOOGLE_3D_TILES_KEY = ENV.VITE_GOOGLE_3D_TILES_KEY ?? "";
 
 const KEPCO_GNB_LNG = 128.692;
 const KEPCO_GNB_LAT = 35.227;
@@ -45,6 +53,19 @@ const viewer = new Viewer("cesiumContainer", {
   // CSS 배경 그라데이션이 비치도록 WebGL context를 알파 채널 활성으로
   contextOptions: { webgl: { alpha: true } },
 });
+
+/* -------------------------------------------------------------
+ * Post-processing — 블룸(글로우)
+ *   부스트 트레일·LED·야간 창문·항공장애등이 모두 한층 빛남.
+ *   GPU 셰이더 기반이라 외부 텍스처 0개.
+ * ------------------------------------------------------------- */
+viewer.scene.postProcessStages.bloom.enabled = true;
+viewer.scene.postProcessStages.bloom.uniforms.glowOnly = false;
+viewer.scene.postProcessStages.bloom.uniforms.contrast = 110;
+viewer.scene.postProcessStages.bloom.uniforms.brightness = -0.25;
+viewer.scene.postProcessStages.bloom.uniforms.delta = 1.0;
+viewer.scene.postProcessStages.bloom.uniforms.sigma = 3.5;
+viewer.scene.postProcessStages.bloom.uniforms.stepSize = 1.2;
 
 /* -------------------------------------------------------------
  * Offline / corporate-proxy fallback (먼저 모드 결정)
@@ -68,7 +89,17 @@ if (offlineMode) {
   if (viewer.scene.sun) viewer.scene.sun.show = false;
   if (viewer.scene.moon) viewer.scene.moon.show = false;
   if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
-  if (viewer.scene.fog) viewer.scene.fog.enabled = false;
+  // Fog는 텍스처 없이 거리 기반 페이드만으로 동작 — 깊이감 큼.
+  // (skyAtmosphere/skyBox는 텍스처 의존이라 끄지만 fog는 별개)
+  if (viewer.scene.fog) {
+    try {
+      viewer.scene.fog.enabled = true;
+      viewer.scene.fog.density = 0.0008;
+      viewer.scene.fog.screenSpaceErrorFactor = 4;
+    } catch {
+      viewer.scene.fog.enabled = false;
+    }
+  }
   // Globe 외곽(skyBox 끈 영역)이 CSS 황혼 그라데이션과 자연스럽게 섞이도록
   // 배경을 완전 투명으로 — body의 linear-gradient 배경이 그대로 보임
   viewer.scene.backgroundColor = Color.fromCssColorString("#000").withAlpha(0);
@@ -80,39 +111,93 @@ if (offlineMode) {
 }
 
 /* -------------------------------------------------------------
- * Imagery layers (배포 모드에서만)
- *  - Default: Cesium Ion (Bing aerial) — needs VITE_CESIUM_ION_TOKEN
- *  - Overlay: V-World satellite (Korean high-detail) — needs VITE_VWORLD_KEY
- *  사내(localhost)에서는 imagery 호출 자체가 프록시에 막혀 텍스처
- *  디코딩 실패를 유발하므로 offlineMode일 때는 imagery 추가를 건너뜀.
+ * Imagery layers — V-World (국토교통부 공공 API)
+ *   offlineMode와 무관하게 키만 있으면 시도. 사내 SSL 프록시가 정부
+ *   공공 API를 차단하지 않을 가능성이 높아 별도 가드를 두지 않는다.
+ *   호출 실패해도 globe baseColor가 깔려 있어 빈 화면이 되진 않음.
  * ------------------------------------------------------------- */
-if (!offlineMode && VWORLD_KEY) {
-  const vworldSatellite = new UrlTemplateImageryProvider({
-    url: `https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/{z}/{y}/{x}.jpeg`,
-    maximumLevel: 19,
-    credit: "V-World 위성영상 (국토교통부)",
-  });
-  viewer.imageryLayers.add(new ImageryLayer(vworldSatellite, {}));
-  // V-World 하이브리드(도로/지명 오버레이) — 필요하면 활성화
-  const vworldHybrid = new UrlTemplateImageryProvider({
-    url: `https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Hybrid/{z}/{y}/{x}.png`,
-    maximumLevel: 19,
-    credit: "V-World",
-  });
-  const hybridLayer = new ImageryLayer(vworldHybrid, {});
-  hybridLayer.alpha = 0.85;
-  viewer.imageryLayers.add(hybridLayer);
-  console.log("[Drone Rider] V-World imagery active");
-} else if (!offlineMode) {
-  console.log("[Drone Rider] V-World key not set, using Cesium Ion default imagery");
+if (VWORLD_KEY) {
+  try {
+    // offlineMode에서 imageryLayers.removeAll()을 호출했을 수 있으므로,
+    // 그 직후 V-World를 다시 추가하는 형태가 됨.
+    const vworldSatellite = new UrlTemplateImageryProvider({
+      url: `https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/{z}/{y}/{x}.jpeg`,
+      maximumLevel: 19,
+      credit: "V-World 위성영상 (국토교통부)",
+    });
+    viewer.imageryLayers.add(new ImageryLayer(vworldSatellite, {}));
+    // 하이브리드(도로/지명 오버레이) — 살짝 투명하게 얹기
+    const vworldHybrid = new UrlTemplateImageryProvider({
+      url: `https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Hybrid/{z}/{y}/{x}.png`,
+      maximumLevel: 19,
+      credit: "V-World",
+    });
+    const hybridLayer = new ImageryLayer(vworldHybrid, {});
+    hybridLayer.alpha = 0.7;
+    viewer.imageryLayers.add(hybridLayer);
+    // offlineMode 진입 시 baseColor가 어둡게 깔려 있으면 위성 위에 색이
+    // 덧입혀져 어둡게 보일 수 있으므로 알파 가산 모드 보정
+    viewer.scene.globe.baseColor = Color.WHITE;
+    console.log("[Drone Rider] V-World imagery active");
+  } catch (e) {
+    console.warn("[Drone Rider] V-World imagery init failed:", e);
+  }
 }
 
 /* -------------------------------------------------------------
- * Procedural city — 도로/건물/녹지/강을 코드로 생성.
- *  사내 보안이 .png/.jpg를 매일 지우는 환경에서도 외부 텍스처 없이
- *  "사실적인 환경"을 유지하기 위한 모듈. 정의는 src/world.ts.
+ * World — 3-tier 우선순위
+ *   1) Google Photorealistic 3D Tiles (VITE_GOOGLE_3D_TILES_KEY)
+ *      → 실제 한전 경남본부 일대 항공 메쉬 + procedural 전주/전선만
+ *   2) V-World 위성영상 (VITE_VWORLD_KEY, 위에서 imagery로 이미 추가됨)
+ *      → 진짜 위성지면 + procedural 전주/전선만 (점검 시뮬레이션)
+ *   3) Procedural city (텍스처 없이 코드로 도시 생성)
+ *      → 사내·오프라인 환경 fallback
+ *   상위 단계가 실패하면 다음 단계로 자동 fallback.
  * ------------------------------------------------------------- */
-buildWorld(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+if (GOOGLE_3D_TILES_KEY) {
+  try {
+    const tileset = await createGooglePhotorealistic3DTileset(GOOGLE_3D_TILES_KEY);
+    viewer.scene.primitives.add(tileset);
+    // Google 메쉬가 지면을 모두 덮으므로 globe 비활성화 (z-fighting / 이중 지면 방지)
+    viewer.scene.globe.show = false;
+    buildPowerInfraOnly(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+    console.log("[Drone Rider] Google Photorealistic 3D Tiles active");
+  } catch (e) {
+    console.warn("[Drone Rider] Google 3D Tiles load failed, fallback:", e);
+    if (VWORLD_KEY) {
+      buildPowerInfraOnly(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+    } else {
+      buildWorld(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+    }
+  }
+} else if (VWORLD_KEY) {
+  // V-World 위성영상 위에 OSM 3D 건물 + 전주·전선
+  //   - V-World imagery는 평면이라 옆면 없는 도시처럼 보이므로
+  //     Cesium Ion이 무료 제공하는 OSM Buildings(전세계 건물 extrude)를 추가.
+  //   - 진주 OSM 데이터가 풍부하면 즉시 3D 도시 효과. 빈약하면 별도 대안 필요.
+  buildPowerInfraOnly(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+  try {
+    const osmBuildings = await createOsmBuildingsAsync();
+    // OSM은 한국 building height 태그가 빈약해서 모든 박스가 default 높이로
+    // 솟는 경향이 있음. 위성영상과 자연스럽게 섞이도록:
+    //   1) 색을 도시 회색 톤 + 약간 투명 → 위성과 블렌딩
+    //   2) 60m 위는 ClippingPlane으로 잘라 비현실적 고층 박스 차단
+    osmBuildings.style = new Cesium3DTileStyle({
+      color: "color('#6e7884', 0.88)",
+    });
+    osmBuildings.clippingPlanes = new ClippingPlaneCollection({
+      planes: [new ClippingPlane(new Cartesian3(0, 0, -1), 60)],
+      unionClippingRegions: false,
+      edgeWidth: 0,
+    });
+    viewer.scene.primitives.add(osmBuildings);
+    console.log("[Drone Rider] V-World imagery + OSM Buildings active");
+  } catch (e) {
+    console.warn("[Drone Rider] OSM Buildings load failed:", e);
+  }
+} else {
+  buildWorld(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+}
 
 /* -------------------------------------------------------------
  * Entities: KEPCO HQ marker + electricity pole(s)
@@ -502,6 +587,9 @@ const hudEl = document.getElementById("hud");
 /* -------------------------------------------------------------
  * Game loop — runs once per frame via Cesium preRender
  * ------------------------------------------------------------- */
+// 카메라 lag(이전 프레임 위치)를 보간 기준으로 사용
+let prevCameraPos: Cartesian3 | null = null;
+
 let lastTime = performance.now();
 viewer.scene.preRender.addEventListener(() => {
   const now = performance.now();
@@ -617,7 +705,25 @@ viewer.scene.preRender.addEventListener(() => {
     -Math.cos(drone.heading) * backDist,
     upDist,
   );
-  const cameraWorldPos = Matrix4.multiplyByPoint(enuTransform, localOffset, new Cartesian3());
+  let cameraWorldPos = Matrix4.multiplyByPoint(enuTransform, localOffset, new Cartesian3());
+
+  // --- 카메라 lag — 이전 위치에서 목표 위치로 lerp (게임 카메라 느낌)
+  // dt 기반 보간 계수 — 60fps에서 약 0.15
+  const lagFactor = 1 - Math.pow(0.0005, dt);
+  if (prevCameraPos) {
+    cameraWorldPos = Cartesian3.lerp(prevCameraPos, cameraWorldPos, lagFactor, new Cartesian3());
+  }
+
+  // --- 카메라 셰이크 — 부스트 0.45m / 드리프트 0.18m 진폭
+  const shakeAmp = drone.isBoosting ? 0.45 : (drone.isDrifting ? 0.18 : 0);
+  if (shakeAmp > 0) {
+    const sx = (Math.random() - 0.5) * shakeAmp;
+    const sy = (Math.random() - 0.5) * shakeAmp;
+    const sz = (Math.random() - 0.5) * shakeAmp;
+    cameraWorldPos = Cartesian3.add(cameraWorldPos, new Cartesian3(sx, sy, sz), new Cartesian3());
+  }
+
+  prevCameraPos = Cartesian3.clone(cameraWorldPos, new Cartesian3());
 
   // 보는 지점은 드론 앞 + 살짝 위 — 거리 늘려 시야 확보
   const lookForward = new Cartesian3(

@@ -56,7 +56,7 @@ git diff --cached --stat
 # 6. commit (메시지 파일로 -F 전달)
 $msgFile = Join-Path $repoRoot ".git\COMMIT_MSG_TMP.txt"
 $msg = @"
-Visual upgrade: dusk sky, lit buildings, power lines, animated drone
+World tiers + V-World imagery + OSM 3D buildings (toned)
 
 Drone visual
 - Single red box replaced with a 9-entity quadcopter: cabin body,
@@ -128,6 +128,58 @@ Drone life
   PolylineGlowMaterialProperty (orange, taper, glow) collects up
   to 40 recent rear positions while boosting and shifts them out
   one per frame when boost releases.
+
+VFX pass (no external textures, all shader/code/material)
+- Bloom: viewer.scene.postProcessStages.bloom enabled with tuned
+  contrast/brightness/sigma. Building windows, LEDs, trail and
+  aviation lights now glow.
+- Fog: re-enabled inside offlineMode with try-catch (density
+  0.0008). Distance falloff restores depth perception. Auto-
+  disables itself if it throws under corporate texture cleanup.
+- Camera lag: setView destination is now lerped from the previous
+  frame position with a dt-based factor (~0.15 @60fps). Adds
+  arcade chase feel.
+- Camera shake: random per-axis offset added when boosting
+  (0.45m) or drifting (0.18m).
+- Night city lighting: ~60% of buildings now use windowLit yellow
+  color in their GridMaterial line color with thicker lines, the
+  rest stay dim. Combined with bloom this produces a populated
+  night-city look.
+- Aviation lights: red obstruction lights on rooftop antennas now
+  pulse at ~1.6 Hz with per-building phase offset via
+  CallbackProperty.
+
+World tier system
+- main.ts: world selection now follows a 3-tier priority.
+  1) Google Photorealistic 3D Tiles if VITE_GOOGLE_3D_TILES_KEY
+     is set -- loads real aerial mesh of KEPCO Gyeongnam HQ area
+     and disables the default globe to avoid double-ground.
+  2) V-World satellite + hybrid imagery if VITE_VWORLD_KEY is set
+     (offlineMode guard removed; V-World is a Korean government
+     public API likely not blocked by corporate SSL proxy).
+  3) Procedural city fallback (the existing buildWorld()).
+- world.ts: exported buildPowerInfraOnly() which adds only poles
+  + power lines so that tiers 1 and 2 can keep the "inspection
+  course" concept on top of real-world ground without doubling
+  up procedural buildings/roads.
+- Failure cascade: if Google 3D Tiles load fails, falls through
+  to V-World if keyed, otherwise to procedural.
+
+V-World imagery + OSM Buildings
+- main.ts: V-World offlineMode guard removed -- keyed imagery is
+  attempted regardless of host (government public API is unlikely
+  to be blocked by the corporate SSL proxy). Hybrid overlay alpha
+  tuned to 0.7. globe.baseColor set to white under V-World so
+  satellite tones aren't darkened by the underlying baseColor.
+- V-World tier now also adds Cesium OSM Buildings (free via
+  Cesium Ion token we already have) so the platform isn't a flat
+  satellite image. Korean OSM building data is sparse, so this is
+  a stepping stone before Google Photorealistic 3D Tiles.
+- OSM Buildings styled to color('#6e7884', 0.88) so they read as
+  a uniform city gray and blend with the satellite imagery.
+- ClippingPlaneCollection caps OSM building height at 60m to
+  hide unrealistic over-extrusions caused by missing height tags
+  in Korean OSM data.
 "@
 Set-Content -Path $msgFile -Value $msg -Encoding utf8
 

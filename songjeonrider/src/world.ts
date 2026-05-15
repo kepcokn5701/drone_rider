@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------
 
 import {
+  CallbackProperty,
   Cartesian2,
   Cartesian3,
   Color,
@@ -323,6 +324,20 @@ export function buildWorld(viewer: Viewer, centerLng: number, centerLat: number)
 }
 
 /* -------------------------------------------------------------
+ * Power-infra only — Google 3D Tiles로 도시·도로가 이미 깔린 상태에서
+ *   우리만의 점검 시뮬레이션 컨셉(전주 + 전선)만 얹기 위한 진입점.
+ *   실제 도시 위에 전주가 도로 따라 자연스럽게 분포돼야 의미 있음.
+ * ------------------------------------------------------------- */
+export function buildPowerInfraOnly(
+  viewer: Viewer,
+  centerLng: number,
+  centerLat: number,
+) {
+  const SPAN = 0.005;
+  addPolesAlongRoads(viewer, centerLng, centerLat, SPAN);
+}
+
+/* -------------------------------------------------------------
  * Building — 본체 + 옥상 + 창문 격자 + (랜덤) 옥상 구조물
  *   창문 격자는 GridMaterialProperty 한 줄로 박스 표면에 그려서
  *   entity 수를 늘리지 않고 야간 도시 느낌을 만든다.
@@ -341,16 +356,22 @@ function addBuilding(
   const lineCountX = Math.max(2, Math.floor(w / 2.6));
   const lineCountZ = Math.max(2, Math.floor(h / 3.2));
 
+  // 야간 점등 분포: 60% lit (노란 창문), 40% dim (꺼진 창문).
+  // lit 건물은 라인 색을 노란 톤으로 → 블룸 포스트프로세싱과 결합하면 빛남.
+  const isLit = rng() < 0.6;
+  const lineColor = isLit ? PALETTE.windowLit : PALETTE.windowDim;
+  const cellAlpha = isLit ? 0.78 : 0.92;
+
   // 본체 (창문 그리드 material)
   viewer.entities.add({
     position: Cartesian3.fromDegrees(cx, cy, h / 2),
     box: {
       dimensions: new Cartesian3(w, d, h),
       material: new GridMaterialProperty({
-        color: baseColor,
-        cellAlpha: 0.88,
+        color: isLit ? lineColor : baseColor,
+        cellAlpha: cellAlpha,
         lineCount: new Cartesian2(lineCountX, lineCountZ),
-        lineThickness: new Cartesian2(1.6, 1.6),
+        lineThickness: new Cartesian2(isLit ? 2.2 : 1.4, isLit ? 2.2 : 1.4),
       }),
       outline: true,
       outlineColor: PALETTE.bldgRoof,
@@ -382,12 +403,17 @@ function addBuilding(
         material: PALETTE.rooftopGear,
       },
     });
-    // 끝에 작은 빨간 점 (항공장애등 느낌)
+    // 끝에 빨간 항공장애등 — 펄스 (1.6Hz). 건물마다 위상 살짝 다르게.
+    const phase = rng() * Math.PI * 2;
     viewer.entities.add({
       position: Cartesian3.fromDegrees(ax, ay, h + aH + 0.2),
       point: {
-        pixelSize: 5,
-        color: Color.fromCssColorString("#ff3344"),
+        pixelSize: 7,
+        color: new CallbackProperty(() => {
+          const t = Date.now() / 1000;
+          const a = 0.35 + 0.65 * Math.abs(Math.sin(t * 1.6 + phase));
+          return Color.fromCssColorString("#ff3344").withAlpha(a);
+        }, false) as any,
         outlineColor: Color.BLACK,
         outlineWidth: 1,
       },
