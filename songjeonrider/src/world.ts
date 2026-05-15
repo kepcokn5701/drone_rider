@@ -237,4 +237,77 @@ export function buildWorld(viewer: Viewer, centerLng: number, centerLat: number)
       material: PALETTE.waterEdge,
     },
   });
+
+  /* ---- 6. 전주 — 도로 가장자리를 따라 분포 (점검 시뮬레이션 동선) ---- */
+  addPolesAlongRoads(viewer, centerLng, centerLat, SPAN);
+}
+
+/* -------------------------------------------------------------
+ * 전주 — 도로 가장자리에 분포
+ *  점검 시뮬레이션 컨셉상 도시 전역에 흩어져 있는 게 자연스러움.
+ *  메인 십자 도로 양쪽 + 일부 부도로 가장자리에 약 30m 간격 배치.
+ * ------------------------------------------------------------- */
+function addPolesAlongRoads(
+  viewer: Viewer,
+  centerLng: number,
+  centerLat: number,
+  SPAN: number,
+) {
+  const POLE_HEIGHT = 12; // m
+  const POLE_COLOR = Color.fromCssColorString("#3a3f47");
+  const MAIN_HALF = SPAN * 0.012;
+  // lat 1deg ≈ 111km, lng 1deg ≈ 111km * cos(lat)
+  const cosLat = Math.cos((centerLat * Math.PI) / 180);
+  const POLE_STEP_DEG_NS = 30 / 111111;            // 30m in lat
+  const POLE_STEP_DEG_EW = 30 / (111111 * cosLat); // 30m in lng
+
+  const addPole = (lng: number, lat: number) => {
+    // 본체 (cylinder)
+    viewer.entities.add({
+      position: Cartesian3.fromDegrees(lng, lat, POLE_HEIGHT / 2),
+      cylinder: {
+        length: POLE_HEIGHT,
+        topRadius: 0.22,
+        bottomRadius: 0.32,
+        material: POLE_COLOR,
+        outline: true,
+        outlineColor: Color.BLACK,
+      },
+    });
+    // 가로대 (cross-arm)
+    viewer.entities.add({
+      position: Cartesian3.fromDegrees(lng, lat, POLE_HEIGHT - 0.8),
+      box: {
+        dimensions: new Cartesian3(2.6, 0.18, 0.18),
+        material: POLE_COLOR,
+        outline: true,
+        outlineColor: Color.BLACK,
+      },
+    });
+  };
+
+  // 동서 메인 도로 (centerLat 가로) — 도로 양옆(±MAIN_HALF + 약간 더)에 배치
+  const sideOffsetLat = MAIN_HALF + 3 / 111111; // 도로 가장자리 + 3m
+  const lngFrom = centerLng - SPAN * 0.95;
+  const lngTo   = centerLng + SPAN * 0.95;
+  for (let lng = lngFrom; lng <= lngTo; lng += POLE_STEP_DEG_EW) {
+    // 한전 본부 건물 자리 근처는 비움
+    if (Math.abs(lng - (centerLng - SPAN * 0.05)) < SPAN * 0.04) continue;
+    addPole(lng, centerLat + sideOffsetLat);
+  }
+
+  // 남북 메인 도로 (centerLng 세로) — 도로 양옆에 배치
+  const sideOffsetLng = MAIN_HALF + 3 / (111111 * cosLat);
+  const latFrom = centerLat - SPAN * 0.95;
+  const latTo   = centerLat + SPAN * 0.95;
+  for (let lat = latFrom; lat <= latTo; lat += POLE_STEP_DEG_NS) {
+    if (Math.abs(lat - (centerLat + SPAN * 0.05)) < SPAN * 0.04) continue;
+    addPole(centerLng + sideOffsetLng, lat);
+  }
+
+  // 부도로 일부 — 동쪽 SUB_STEPS 0.3 라인을 따라 추가 (가로지르는 점검 코스 느낌)
+  const subLat = centerLat + SPAN * 0.3 + SPAN * 0.007 + 3 / 111111;
+  for (let lng = lngFrom; lng <= lngTo; lng += POLE_STEP_DEG_EW * 1.5) {
+    addPole(lng, subLat);
+  }
 }

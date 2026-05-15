@@ -136,10 +136,10 @@ body.touch-active #hint {
 /* --- 가상 조이스틱 (왼쪽 아래) --- */
 .joystick {
   position: absolute;
-  left: max(env(safe-area-inset-left, 0px), 24px);
+  left: max(env(safe-area-inset-left, 0px), 20px);
   bottom: max(env(safe-area-inset-bottom, 0px), 24px);
-  width: 150px;
-  height: 150px;
+  width: 130px;
+  height: 130px;
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
@@ -159,10 +159,10 @@ body.touch-active #hint {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 60px;
-  height: 60px;
-  margin-left: -30px;
-  margin-top: -30px;
+  width: 54px;
+  height: 54px;
+  margin-left: -27px;
+  margin-top: -27px;
   border-radius: 50%;
   background: radial-gradient(
     circle at 35% 30%,
@@ -183,29 +183,39 @@ body.touch-active #hint {
     0 0 26px rgba(80, 180, 255, 0.45);
 }
 
-/* --- 오른쪽 액션 버튼 클러스터 --- */
+/* --- 오른쪽 액션 버튼 클러스터 ---
+ *   세로 스택: 위 = ▲▼ 가로 알트, 아래 = DRIFT/BOOST 큰 버튼 가로.
+ *   왼쪽 조이스틱과 영역 분리 (손가락 충돌 방지).
+ */
 .action-cluster {
   position: absolute;
   right: max(env(safe-area-inset-right, 0px), 24px);
   bottom: max(env(safe-area-inset-bottom, 0px), 24px);
   display: flex;
+  flex-direction: column;
   align-items: flex-end;
-  gap: 14px;
+  gap: 12px;
   pointer-events: auto;
+}
+.action-row {
+  display: flex;
+  gap: 14px;
 }
 .alt-stack {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  gap: 14px;
+  align-self: stretch; /* action-cluster(=DRIFT+BOOST) 폭에 자동 맞춤 */
+  justify-content: space-around;
 }
 .btn-alt {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
   border: 1.5px solid rgba(255, 255, 255, 0.25);
   background: rgba(20, 28, 40, 0.78);
   color: #cfd8ec;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: bold;
   font-family: inherit;
   pointer-events: auto;
@@ -221,11 +231,11 @@ body.touch-active #hint {
   box-shadow: 0 0 14px rgba(120, 160, 255, 0.5);
 }
 .btn-action {
-  width: 96px;
-  height: 96px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.18);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: 1px;
   font-family: inherit;

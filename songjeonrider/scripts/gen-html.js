@@ -43,6 +43,9 @@ const hud = `
     </div>`;
 
 // 모바일 터치 컨트롤 마크업 (touch 감지 시 main.ts가 .touch-active 토글)
+// 레이아웃: 조이스틱(왼쪽 아래) ↔ 액션 클러스터(오른쪽 아래).
+// ▲▼ 알트 버튼은 오른쪽 클러스터의 BOOST/DRIFT 위쪽에 가로로 배치
+// (왼쪽 조이스틱과 영역 분리해 손가락 충돌 방지).
 const touchUI = `
     <div id="touch-ui" aria-hidden="true">
       <!-- 왼쪽: 가상 조이스틱 (방향 + 전진/후진) -->
@@ -50,14 +53,16 @@ const touchUI = `
         <div id="joystick-knob" class="joystick-knob"></div>
       </div>
 
-      <!-- 오른쪽: 액션 버튼 클러스터 -->
+      <!-- 오른쪽: 액션 버튼 클러스터 (▲▼ 위 / DRIFT BOOST 아래) -->
       <div class="action-cluster">
         <div class="alt-stack">
           <button id="btn-alt-up" class="btn-alt" type="button" aria-label="Ascend">&#9650;</button>
           <button id="btn-alt-down" class="btn-alt" type="button" aria-label="Descend">&#9660;</button>
         </div>
-        <button id="btn-drift" class="btn-action btn-drift" type="button">DRIFT</button>
-        <button id="btn-boost" class="btn-action btn-boost" type="button">BOOST</button>
+        <div class="action-row">
+          <button id="btn-drift" class="btn-action btn-drift" type="button">DRIFT</button>
+          <button id="btn-boost" class="btn-action btn-boost" type="button">BOOST</button>
+        </div>
       </div>
     </div>`;
 

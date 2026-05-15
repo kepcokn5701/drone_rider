@@ -136,45 +136,8 @@ viewer.entities.add({
   },
 });
 
-// 전주 라인 (8개) — 트랙 시드
-// NOTE: GLTF 모델(modular_electricity_poles_2k.gltf)은 텍스처 파일(textures/*.jpg) 6개를
-// 필요로 하는데 현재 폴더에 텍스처가 없어 InvalidStateError가 발생함.
-// 우선 Cesium primitive(cylinder + crossbar)로 전주를 그려서 렌더링을 안전하게 유지.
-// 실제 GLTF 모델을 쓰려면 public/modular_electricity_poles_2k.gltf/textures/ 폴더에
-// 6개의 jpg(diff, nor_gl, arm, pieces_*) 텍스처를 채워 넣고 이 블록을
-// model: { uri: POLE_GLTF, ... } 형태로 교체하면 됨.
-const POLE_COUNT = 8;
-const POLE_SPACING_DEG = 0.0003; // 약 33m 간격
-const POLE_HEIGHT = 12; // m
-const POLE_COLOR = Color.fromCssColorString("#3a3f47");
-for (let i = 0; i < POLE_COUNT; i++) {
-  const lng = KEPCO_GNB_LNG + 0.0006 + i * POLE_SPACING_DEG;
-  const lat = KEPCO_GNB_LAT - 0.0001 * i;
-
-  // 전주 본체 (cylinder) — position이 중심이므로 alt를 절반 높이로 설정
-  viewer.entities.add({
-    position: Cartesian3.fromDegrees(lng, lat, POLE_HEIGHT / 2),
-    cylinder: {
-      length: POLE_HEIGHT,
-      topRadius: 0.22,
-      bottomRadius: 0.32,
-      material: POLE_COLOR,
-      outline: true,
-      outlineColor: Color.BLACK,
-    },
-  });
-
-  // 가로대 (cross-arm) — 상단 약 1m 아래
-  viewer.entities.add({
-    position: Cartesian3.fromDegrees(lng, lat, POLE_HEIGHT - 0.8),
-    box: {
-      dimensions: new Cartesian3(2.6, 0.18, 0.18),
-      material: POLE_COLOR,
-      outline: true,
-      outlineColor: Color.BLACK,
-    },
-  });
-}
+// 전주는 도시 모듈(world.ts)의 addPolesAlongRoads에서 도로 가장자리를 따라
+// 분포 배치. 점검 시뮬레이션 동선이 자연스럽게 형성됨.
 
 /* -------------------------------------------------------------
  * Drone state + tunables
@@ -210,6 +173,13 @@ const P = {
   boostRegen: 0.22,       // /sec
 };
 
+/* -------------------------------------------------------------
+ * Drone visual — 쿼드콥터 모델
+ *  단일 박스 대신 본체 + X자 암 + 4개 프로펠러 + 전후 핀라이트로
+ *  여러 entity 조합. 모든 부품의 position은 dronePartPos()로 매 프레임
+ *  드론 위치 + 회전된 local offset(ENU 좌표)으로 계산.
+ *  본체 크기 ≈ 1m 급 (산업용 점검 드론 스케일).
+ * ------------------------------------------------------------- */
 const dronePosCallback = new CallbackProperty(
   () => Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt),
   false,
@@ -223,15 +193,114 @@ const droneOriCallback = new CallbackProperty(() => {
   return Transforms.headingPitchRollQuaternion(pos, hpr);
 }, false);
 
-// 드론 visual — 일단 빨간 박스 (GLTF로 교체 가능)
+// 드론 body-local offset(x=오른쪽, y=앞, z=위)을 world position으로 변환
+function dronePartPos(offX: number, offY: number, offZ: number): CallbackProperty {
+  return new CallbackProperty(() => {
+    const centerPos = Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt);
+    const enu = Transforms.eastNorthUpToFixedFrame(centerPos);
+    const sinH = Math.sin(drone.heading);
+    const cosH = Math.cos(drone.heading);
+    // body(x=right, y=forward) → ENU(east, north)
+    const east = offX * cosH + offY * sinH;
+    const north = -offX * sinH + offY * cosH;
+    const enuLocal = new Cartesian3(east, north, offZ);
+    return Matrix4.multiplyByPoint(enu, enuLocal, new Cartesian3());
+  }, false);
+}
+
+const DRONE_BODY = Color.fromCssColorString("#c8362e");
+const DRONE_ARM  = Color.fromCssColorString("#222428");
+const DRONE_PROP = Color.fromCssColorString("#cfd5dd").withAlpha(0.55);
+const DRONE_LED_FRONT = Color.fromCssColorString("#ff2a44");
+const DRONE_LED_REAR  = Color.fromCssColorString("#36ff6a");
+
+// 본체 (사각형 캐빈)
 viewer.entities.add({
   position: dronePosCallback as unknown as ConstantPositionProperty,
   orientation: droneOriCallback as any,
   box: {
-    dimensions: new Cartesian3(3.2, 4.6, 1.0),
-    material: Color.fromCssColorString("#ff3344").withAlpha(0.92),
+    dimensions: new Cartesian3(0.55, 0.75, 0.18),
+    material: DRONE_BODY,
     outline: true,
     outlineColor: Color.BLACK,
+  },
+});
+
+// 본체 상단 캐노피 (살짝 어두운 톤, 약간 더 작은 박스)
+viewer.entities.add({
+  position: dronePartPos(0, 0, 0.12) as unknown as ConstantPositionProperty,
+  orientation: droneOriCallback as any,
+  box: {
+    dimensions: new Cartesian3(0.4, 0.5, 0.1),
+    material: Color.fromCssColorString("#1a1d22"),
+  },
+});
+
+// X자 암 2개 (대각선 박스)
+const ARM_LEN = 0.95;
+const ARM_THICK = 0.06;
+// 암 좌표 — X자: NE-SW와 NW-SE 두 개. 각각 heading 기준 45도/-45도 박스.
+// 가장 간단한 방식: 4개 짧은 암(각 모서리 → 본체)으로 구성.
+const armOffsets: Array<[number, number]> = [
+  [ ARM_LEN * 0.35,  ARM_LEN * 0.35], // 전방-우
+  [-ARM_LEN * 0.35,  ARM_LEN * 0.35], // 전방-좌
+  [ ARM_LEN * 0.35, -ARM_LEN * 0.35], // 후방-우
+  [-ARM_LEN * 0.35, -ARM_LEN * 0.35], // 후방-좌
+];
+for (const [ox, oy] of armOffsets) {
+  // 본체 → 모터까지 가는 막대. 박스로 표현 (방향은 본체 orientation 따라감)
+  // 대각선 방향이라 box dimensions 그대로 두고 본체 orientation에서 살짝 다른 방향으로 회전된 모양처럼 보이게 하기 위해
+  // 우선 각 암을 (반쪽 길이의 가는 박스)로, 본체와 같은 orientation으로 두면 X자 비주얼이 약해지므로
+  // 모터(원통)만 강조하고 암은 짧고 가는 박스로 단순화.
+  viewer.entities.add({
+    position: dronePartPos(ox * 0.6, oy * 0.6, 0) as unknown as ConstantPositionProperty,
+    orientation: droneOriCallback as any,
+    box: {
+      dimensions: new Cartesian3(Math.abs(ox) * 1.4, Math.abs(oy) * 1.4, ARM_THICK),
+      material: DRONE_ARM,
+    },
+  });
+  // 모터 (작은 cylinder, 수직)
+  viewer.entities.add({
+    position: dronePartPos(ox, oy, 0.05) as unknown as ConstantPositionProperty,
+    cylinder: {
+      length: 0.12,
+      topRadius: 0.08,
+      bottomRadius: 0.08,
+      material: DRONE_ARM,
+    },
+  });
+  // 프로펠러 (납작한 cylinder, 반투명)
+  viewer.entities.add({
+    position: dronePartPos(ox, oy, 0.15) as unknown as ConstantPositionProperty,
+    cylinder: {
+      length: 0.02,
+      topRadius: 0.22,
+      bottomRadius: 0.22,
+      material: DRONE_PROP,
+      outline: true,
+      outlineColor: Color.fromCssColorString("#888").withAlpha(0.6),
+    },
+  });
+}
+
+// 핀라이트 — 전방 빨강, 후방 녹색 (방향성 인지)
+viewer.entities.add({
+  position: dronePartPos(0, 0.42, -0.02) as unknown as ConstantPositionProperty,
+  point: {
+    pixelSize: 7,
+    color: DRONE_LED_FRONT,
+    outlineColor: Color.BLACK,
+    outlineWidth: 1,
+  },
+});
+viewer.entities.add({
+  position: dronePartPos(0, -0.42, -0.02) as unknown as ConstantPositionProperty,
+  point: {
+    pixelSize: 7,
+    color: DRONE_LED_REAR,
+    outlineColor: Color.BLACK,
+    outlineWidth: 1,
   },
 });
 
@@ -492,8 +561,9 @@ viewer.scene.preRender.addEventListener(() => {
   const dronePos = Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt);
   const enuTransform = Transforms.eastNorthUpToFixedFrame(dronePos);
 
-  const backDist = drone.isBoosting ? 11 : 8;
-  const upDist = drone.isBoosting ? 2.8 : 3.5;
+  // 드론 크기를 ~1m로 줄였으므로 카메라를 더 멀리 두고 시야 확보
+  const backDist = drone.isBoosting ? 24 : 18;
+  const upDist = drone.isBoosting ? 5.5 : 6.5;
   // ENU local: east=+x, north=+y, up=+z
   // forward direction in ENU = (sin(h), cos(h), 0)
   const localOffset = new Cartesian3(
@@ -503,11 +573,11 @@ viewer.scene.preRender.addEventListener(() => {
   );
   const cameraWorldPos = Matrix4.multiplyByPoint(enuTransform, localOffset, new Cartesian3());
 
-  // 보는 지점은 드론 살짝 앞 + 위
+  // 보는 지점은 드론 앞 + 살짝 위 — 거리 늘려 시야 확보
   const lookForward = new Cartesian3(
-    Math.sin(drone.heading) * 3,
-    Math.cos(drone.heading) * 3,
-    1.2,
+    Math.sin(drone.heading) * 12,
+    Math.cos(drone.heading) * 12,
+    2.5,
   );
   const lookTarget = Matrix4.multiplyByPoint(enuTransform, lookForward, new Cartesian3());
 
