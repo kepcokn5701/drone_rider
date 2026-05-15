@@ -56,7 +56,7 @@ git diff --cached --stat
 # 6. commit (메시지 파일로 -F 전달)
 $msgFile = Join-Path $repoRoot ".git\COMMIT_MSG_TMP.txt"
 $msg = @"
-Quadcopter model, distributed poles, wider camera, fixed mobile layout
+Visual upgrade: dusk sky, lit buildings, power lines, animated drone
 
 Drone visual
 - Single red box replaced with a 9-entity quadcopter: cabin body,
@@ -93,6 +93,41 @@ Mobile UI layout
   buttons 56 -> 50) so even on a 360px screen both clusters fit
   with margin.
 - alt-stack uses align-self: stretch to auto-match action-row width.
+
+Sky and atmosphere
+- style.css: body now has a vertical dusk gradient (deep navy at
+  top to amber horizon to dark base). cesiumContainer canvas is
+  set transparent.
+- main.ts: Viewer is constructed with webgl alpha:true and the
+  offlineMode backgroundColor is set to fully transparent, so the
+  CSS dusk gradient shows behind the globe instead of solid black.
+
+City detail
+- src/world.ts: building palette expanded to 7 colors. Each
+  building now uses GridMaterialProperty to draw a window grid
+  scaled to its width and height (no texture files, GPU-rendered).
+- Random rooftop dressing: 30% antenna with a red aviation light,
+  40% water tank on a small base, 30% bare roof.
+- Main cross roads get yellow dashed center lines and 4-way
+  crosswalk striping at the intersection.
+
+Power infrastructure
+- src/world.ts addPolesAlongRoads: cross-arm orientation is now
+  axis-aware (east-west vs north-south) so the arm sits
+  perpendicular to its road.
+- New addPowerLines() function connects adjacent poles with two
+  polylines (left and right wire ends) and a slight mid-span sag.
+  Forms a continuous power grid threading the city -- the
+  "inspection course" reads at a glance.
+
+Drone life
+- main.ts: propellers replaced from static flat cylinders with
+  rotating box graphics. A shared propAngle accumulates each
+  frame from propSpeedRad (32 + speed-based, 78 on boost).
+- Boost trail: a CallbackProperty-driven polyline with
+  PolylineGlowMaterialProperty (orange, taper, glow) collects up
+  to 40 recent rear positions while boosting and shifts them out
+  one per frame when boost releases.
 "@
 Set-Content -Path $msgFile -Value $msg -Encoding utf8
 

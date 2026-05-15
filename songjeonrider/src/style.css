@@ -4,7 +4,19 @@ html, body {
   overflow: hidden;
   width: 100%;
   height: 100%;
-  background: #000;
+  /* 황혼 그라데이션 (위→아래): 짙은 남청 → 자주빛 → 호박색 지평선.
+   * cesiumContainer가 그 위에 깔리지만 backgroundColor에 alpha를 두면
+   * 이 배경이 비쳐서 자연스러운 하늘 톤이 잡힘. */
+  background:
+    linear-gradient(
+      to bottom,
+      #07101e 0%,
+      #1a1f3a 35%,
+      #3a2a4a 60%,
+      #6b3a3a 82%,
+      #c47a3a 95%,
+      #2a1a14 100%
+    );
   font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
   color: #fff;
 }
@@ -14,6 +26,11 @@ html, body {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+/* WebGL 캔버스 자체를 약간 투과 — 위쪽 하늘 영역에서 배경 그라데이션이
+ * 살짝 비쳐 입체감 + 분위기 형성 (지면은 globe가 가리니까 영향 없음) */
+#cesiumContainer canvas {
+  background: transparent;
 }
 
 #hint {

@@ -15,6 +15,7 @@ import {
   VerticalOrigin,
   UrlTemplateImageryProvider,
   ImageryLayer,
+  PolylineGlowMaterialProperty,
   Math as CMath,
 } from "cesium";
 import type { ConstantPositionProperty } from "cesium";
@@ -41,6 +42,8 @@ const viewer = new Viewer("cesiumContainer", {
   infoBox: false,
   selectionIndicator: false,
   shouldAnimate: true,
+  // CSS 배경 그라데이션이 비치도록 WebGL context를 알파 채널 활성으로
+  contextOptions: { webgl: { alpha: true } },
 });
 
 /* -------------------------------------------------------------
@@ -66,9 +69,9 @@ if (offlineMode) {
   if (viewer.scene.moon) viewer.scene.moon.show = false;
   if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
   if (viewer.scene.fog) viewer.scene.fog.enabled = false;
-  // 그라데이션 같은 하늘 톤 — CSS 배경이 cesiumContainer 뒤에 보이므로
-  // 여기서는 약간 푸르스름한 어두운 톤으로
-  viewer.scene.backgroundColor = Color.fromCssColorString("#0e1622");
+  // Globe 외곽(skyBox 끈 영역)이 CSS 황혼 그라데이션과 자연스럽게 섞이도록
+  // 배경을 완전 투명으로 — body의 linear-gradient 배경이 그대로 보임
+  viewer.scene.backgroundColor = Color.fromCssColorString("#000").withAlpha(0);
   console.log("[Drone Rider] offline fallback active (localhost)");
 } else {
   if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
@@ -210,9 +213,19 @@ function dronePartPos(offX: number, offY: number, offZ: number): CallbackPropert
 
 const DRONE_BODY = Color.fromCssColorString("#c8362e");
 const DRONE_ARM  = Color.fromCssColorString("#222428");
-const DRONE_PROP = Color.fromCssColorString("#cfd5dd").withAlpha(0.55);
+const DRONE_PROP = Color.fromCssColorString("#cfd5dd").withAlpha(0.7);
 const DRONE_LED_FRONT = Color.fromCssColorString("#ff2a44");
 const DRONE_LED_REAR  = Color.fromCssColorString("#36ff6a");
+
+// 프로펠러 자전 각도 (rad) — 게임 루프에서 dt에 맞춰 증가
+let propAngle = 0;
+// 프로펠러 orientation: 본체 heading + 자전. 모든 프로펠러가 공유 (좌표 차이는 무시 가능).
+const dronePropOriCallback = new CallbackProperty(() => {
+  const pos = Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt);
+  const propYaw = drone.heading + propAngle;
+  const hpr = new HeadingPitchRoll(propYaw, 0, 0);
+  return Transforms.headingPitchRollQuaternion(pos, hpr);
+}, false);
 
 // 본체 (사각형 캐빈)
 viewer.entities.add({
@@ -270,19 +283,31 @@ for (const [ox, oy] of armOffsets) {
       material: DRONE_ARM,
     },
   });
-  // 프로펠러 (납작한 cylinder, 반투명)
+  // 프로펠러 — 길쭉한 박스. propAngle 자전으로 회전 효과.
   viewer.entities.add({
     position: dronePartPos(ox, oy, 0.15) as unknown as ConstantPositionProperty,
-    cylinder: {
-      length: 0.02,
-      topRadius: 0.22,
-      bottomRadius: 0.22,
+    orientation: dronePropOriCallback as any,
+    box: {
+      dimensions: new Cartesian3(0.46, 0.05, 0.014),
       material: DRONE_PROP,
-      outline: true,
-      outlineColor: Color.fromCssColorString("#888").withAlpha(0.6),
     },
   });
 }
+
+// 부스트 트레일 — 최근 위치를 polyline으로. 부스트 ON에서만 점 추가, OFF에서 점차 비움.
+const trailPositions: Cartesian3[] = [];
+const TRAIL_MAX = 40;
+viewer.entities.add({
+  polyline: {
+    positions: new CallbackProperty(() => trailPositions, false) as any,
+    width: 9,
+    material: new PolylineGlowMaterialProperty({
+      color: Color.fromCssColorString("#ff8a1d"),
+      glowPower: 0.28,
+      taperPower: 0.6,
+    }),
+  },
+});
 
 // 핀라이트 — 전방 빨강, 후방 녹색 (방향성 인지)
 viewer.entities.add({
@@ -486,6 +511,27 @@ viewer.scene.preRender.addEventListener(() => {
   // --- Drift / Boost state flags ---
   drone.isDrifting = press(" ", "space") && Math.abs(drone.speed) > 6;
   drone.isBoosting = press("shift") && drone.boost > 0.02 && drone.speed > 0;
+
+  // --- Propeller spin --- (속도와 부스트에 비례)
+  const propSpeedRad = drone.isBoosting ? 78 : 32 + Math.abs(drone.speed) * 0.6;
+  propAngle = (propAngle + propSpeedRad * dt) % (Math.PI * 2);
+
+  // --- Boost trail ---
+  if (drone.isBoosting) {
+    // 후미 위치 (드론 뒤쪽 ~0.5m, 살짝 아래)
+    const sinH = Math.sin(drone.heading);
+    const cosH = Math.cos(drone.heading);
+    const trailM = 0.5;
+    const dLat = -cosH * trailM / 111111;
+    const dLng = -sinH * trailM / (111111 * Math.cos((drone.lat * Math.PI) / 180));
+    trailPositions.push(
+      Cartesian3.fromDegrees(drone.lng + dLng, drone.lat + dLat, drone.alt - 0.1),
+    );
+    if (trailPositions.length > TRAIL_MAX) trailPositions.shift();
+  } else if (trailPositions.length > 0) {
+    // 부스트 OFF에서는 트레일 점차 비움 (잔상 사라지는 느낌)
+    trailPositions.shift();
+  }
 
   // --- Yaw (회전) ---
   const yawMult = drone.isDrifting ? P.driftYawMult : 1.0;
