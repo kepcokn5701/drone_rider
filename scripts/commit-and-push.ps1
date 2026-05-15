@@ -47,7 +47,8 @@ git add `
     "songjeonrider/src/main.ts" `
     "songjeonrider/src/style.css" `
     "songjeonrider/src/world.ts" `
-    "scripts/commit-and-push.ps1"
+    "scripts/commit-and-push.ps1" `
+    "CLAUDE.md"
 
 # 5. staged 확인
 Write-Host "[5/7] staged files:"
@@ -180,6 +181,14 @@ V-World imagery + OSM Buildings
 - ClippingPlaneCollection caps OSM building height at 60m to
   hide unrealistic over-extrusions caused by missing height tags
   in Korean OSM data.
+
+Project memo
+- CLAUDE.md at repo root: project-specific notes for the next
+  session. Covers current state, next priorities (Google 3D
+  Tiles + Vercel), env vars, architecture (3-tier world,
+  persistent-source pattern, offlineMode), known limits (OSM
+  Korea sparse, V-World 3D not directly Cesium-compatible),
+  and common commands.
 "@
 Set-Content -Path $msgFile -Value $msg -Encoding utf8
 
