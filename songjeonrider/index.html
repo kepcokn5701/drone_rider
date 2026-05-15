@@ -2,17 +2,59 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
-    <title>Drone Rider — Cesium v0.6</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0a0e14" />
+    <title>Drone Rider</title>
   </head>
   <body>
     <div id="cesiumContainer"></div>
-    <div id="hint">W/S 가속·감속 · A/D 회전 · Q/E 고도 · 마우스 드래그·휠로 시점·줌</div>
-    <div id="hud">
-      <div class="hud-row"><span class="hud-label">SPEED</span><span id="hud-speed">0</span><span class="hud-unit">km/h</span></div>
-      <div class="hud-row"><span class="hud-label">ALT</span><span id="hud-alt">80</span><span class="hud-unit">m</span></div>
-      <div class="hud-row"><span class="hud-label">HDG</span><span id="hud-heading">0</span><span class="hud-unit">°</span></div>
+
+    <div id="hint">
+      W/S 전진·후진 · A/D 회전 · Q/E 고도 · Space 드리프트 · Shift 부스트
     </div>
+
+    <div id="hud">
+      <div class="hud-row">
+        <span class="hud-label">SPEED</span>
+        <span id="hud-speed">0</span>
+        <span class="hud-unit">km/h</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-label">ALT</span>
+        <span id="hud-alt">0</span>
+        <span class="hud-unit">m</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-label">HDG</span>
+        <span id="hud-heading">0</span>
+        <span class="hud-unit">&deg;</span>
+      </div>
+      <div class="hud-boost-wrap">
+        <div class="hud-boost-label">BOOST</div>
+        <div class="hud-boost-track">
+          <div id="hud-boost-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="touch-ui" aria-hidden="true">
+      <!-- 왼쪽: 가상 조이스틱 (방향 + 전진/후진) -->
+      <div id="joystick" class="joystick">
+        <div id="joystick-knob" class="joystick-knob"></div>
+      </div>
+
+      <!-- 오른쪽: 액션 버튼 클러스터 -->
+      <div class="action-cluster">
+        <div class="alt-stack">
+          <button id="btn-alt-up" class="btn-alt" type="button" aria-label="Ascend">&#9650;</button>
+          <button id="btn-alt-down" class="btn-alt" type="button" aria-label="Descend">&#9660;</button>
+        </div>
+        <button id="btn-drift" class="btn-action btn-drift" type="button">DRIFT</button>
+        <button id="btn-boost" class="btn-action btn-boost" type="button">BOOST</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

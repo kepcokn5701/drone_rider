@@ -2,21 +2,28 @@ import "./style.css";
 import {
   Viewer,
   Ion,
-  Cartesian3,
   Cartesian2,
+  Cartesian3,
   Color,
   HeightReference,
   CallbackProperty,
-  ConstantPositionProperty,
   HeadingPitchRoll,
   Transforms,
+  Matrix4,
   PointGraphics,
   LabelStyle,
   VerticalOrigin,
+  UrlTemplateImageryProvider,
+  ImageryLayer,
+  Math as CMath,
 } from "cesium";
+import type { ConstantPositionProperty } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import { buildWorld } from "./world";
 
-Ion.defaultAccessToken = (import.meta.env.VITE_CESIUM_ION_TOKEN as string) ?? "";
+const ENV = import.meta.env as Record<string, string | undefined>;
+Ion.defaultAccessToken = ENV.VITE_CESIUM_ION_TOKEN ?? "";
+const VWORLD_KEY = ENV.VITE_VWORLD_KEY ?? "";
 
 const KEPCO_GNB_LNG = 128.692;
 const KEPCO_GNB_LAT = 35.227;
@@ -36,12 +43,22 @@ const viewer = new Viewer("cesiumContainer", {
   shouldAnimate: true,
 });
 
+/* -------------------------------------------------------------
+ * Offline / corporate-proxy fallback (먼저 모드 결정)
+ *  사내 SSL 인터셉트 프록시 + 매일 node_modules의 PNG/JPG를 지우는
+ *  보안 정책 때문에 Cesium 기본 imagery·skyBox·sun·moon 텍스처가
+ *  디코딩 실패함 (InvalidStateError: The source image could not be decoded).
+ *  localhost(개발)에서는 외부 텍스처에 의존하는 씬 요소를 전부 끄고
+ *  단색 globe + 어두운 배경으로 fallback. 배포(외부망) 호스트에서는
+ *  기본 Cesium Ion imagery + V-World 오버레이가 활성화됨.
+ * ------------------------------------------------------------- */
 const offlineMode =
   location.hostname === "localhost" || location.hostname === "127.0.0.1";
 
 if (offlineMode) {
   viewer.imageryLayers.removeAll();
-  viewer.scene.globe.baseColor = Color.fromCssColorString("#2a3441");
+  // 흙·식생 mix 톤 (도시 외곽의 자연 지면 느낌)
+  viewer.scene.globe.baseColor = Color.fromCssColorString("#3a4636");
   viewer.scene.globe.showGroundAtmosphere = false;
   viewer.scene.globe.enableLighting = false;
   if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
@@ -49,9 +66,54 @@ if (offlineMode) {
   if (viewer.scene.moon) viewer.scene.moon.show = false;
   if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
   if (viewer.scene.fog) viewer.scene.fog.enabled = false;
-  viewer.scene.backgroundColor = Color.fromCssColorString("#0a0e14");
+  // 그라데이션 같은 하늘 톤 — CSS 배경이 cesiumContainer 뒤에 보이므로
+  // 여기서는 약간 푸르스름한 어두운 톤으로
+  viewer.scene.backgroundColor = Color.fromCssColorString("#0e1622");
+  console.log("[Drone Rider] offline fallback active (localhost)");
+} else {
+  if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
+  if (viewer.scene.fog) viewer.scene.fog.enabled = true;
+  viewer.scene.globe.enableLighting = false;
 }
 
+/* -------------------------------------------------------------
+ * Imagery layers (배포 모드에서만)
+ *  - Default: Cesium Ion (Bing aerial) — needs VITE_CESIUM_ION_TOKEN
+ *  - Overlay: V-World satellite (Korean high-detail) — needs VITE_VWORLD_KEY
+ *  사내(localhost)에서는 imagery 호출 자체가 프록시에 막혀 텍스처
+ *  디코딩 실패를 유발하므로 offlineMode일 때는 imagery 추가를 건너뜀.
+ * ------------------------------------------------------------- */
+if (!offlineMode && VWORLD_KEY) {
+  const vworldSatellite = new UrlTemplateImageryProvider({
+    url: `https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/{z}/{y}/{x}.jpeg`,
+    maximumLevel: 19,
+    credit: "V-World 위성영상 (국토교통부)",
+  });
+  viewer.imageryLayers.add(new ImageryLayer(vworldSatellite, {}));
+  // V-World 하이브리드(도로/지명 오버레이) — 필요하면 활성화
+  const vworldHybrid = new UrlTemplateImageryProvider({
+    url: `https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Hybrid/{z}/{y}/{x}.png`,
+    maximumLevel: 19,
+    credit: "V-World",
+  });
+  const hybridLayer = new ImageryLayer(vworldHybrid, {});
+  hybridLayer.alpha = 0.85;
+  viewer.imageryLayers.add(hybridLayer);
+  console.log("[Drone Rider] V-World imagery active");
+} else if (!offlineMode) {
+  console.log("[Drone Rider] V-World key not set, using Cesium Ion default imagery");
+}
+
+/* -------------------------------------------------------------
+ * Procedural city — 도로/건물/녹지/강을 코드로 생성.
+ *  사내 보안이 .png/.jpg를 매일 지우는 환경에서도 외부 텍스처 없이
+ *  "사실적인 환경"을 유지하기 위한 모듈. 정의는 src/world.ts.
+ * ------------------------------------------------------------- */
+buildWorld(viewer, KEPCO_GNB_LNG, KEPCO_GNB_LAT);
+
+/* -------------------------------------------------------------
+ * Entities: KEPCO HQ marker + electricity pole(s)
+ * ------------------------------------------------------------- */
 viewer.entities.add({
   position: Cartesian3.fromDegrees(KEPCO_GNB_LNG, KEPCO_GNB_LAT, 50),
   point: new PointGraphics({
@@ -74,99 +136,396 @@ viewer.entities.add({
   },
 });
 
+// 전주 라인 (8개) — 트랙 시드
+// NOTE: GLTF 모델(modular_electricity_poles_2k.gltf)은 텍스처 파일(textures/*.jpg) 6개를
+// 필요로 하는데 현재 폴더에 텍스처가 없어 InvalidStateError가 발생함.
+// 우선 Cesium primitive(cylinder + crossbar)로 전주를 그려서 렌더링을 안전하게 유지.
+// 실제 GLTF 모델을 쓰려면 public/modular_electricity_poles_2k.gltf/textures/ 폴더에
+// 6개의 jpg(diff, nor_gl, arm, pieces_*) 텍스처를 채워 넣고 이 블록을
+// model: { uri: POLE_GLTF, ... } 형태로 교체하면 됨.
+const POLE_COUNT = 8;
+const POLE_SPACING_DEG = 0.0003; // 약 33m 간격
+const POLE_HEIGHT = 12; // m
+const POLE_COLOR = Color.fromCssColorString("#3a3f47");
+for (let i = 0; i < POLE_COUNT; i++) {
+  const lng = KEPCO_GNB_LNG + 0.0006 + i * POLE_SPACING_DEG;
+  const lat = KEPCO_GNB_LAT - 0.0001 * i;
+
+  // 전주 본체 (cylinder) — position이 중심이므로 alt를 절반 높이로 설정
+  viewer.entities.add({
+    position: Cartesian3.fromDegrees(lng, lat, POLE_HEIGHT / 2),
+    cylinder: {
+      length: POLE_HEIGHT,
+      topRadius: 0.22,
+      bottomRadius: 0.32,
+      material: POLE_COLOR,
+      outline: true,
+      outlineColor: Color.BLACK,
+    },
+  });
+
+  // 가로대 (cross-arm) — 상단 약 1m 아래
+  viewer.entities.add({
+    position: Cartesian3.fromDegrees(lng, lat, POLE_HEIGHT - 0.8),
+    box: {
+      dimensions: new Cartesian3(2.6, 0.18, 0.18),
+      material: POLE_COLOR,
+      outline: true,
+      outlineColor: Color.BLACK,
+    },
+  });
+}
+
+/* -------------------------------------------------------------
+ * Drone state + tunables
+ * ------------------------------------------------------------- */
 const drone = {
   lng: KEPCO_GNB_LNG,
   lat: KEPCO_GNB_LAT - 0.001,
   alt: START_ALT,
-  heading: 0,
+  heading: 0,        // radians
   yawSpeed: 0,
-  speed: 0,
+  speed: 0,          // m/s along facing direction
+  lateralSpeed: 0,   // m/s perpendicular (drift slip)
+  boost: 1.0,        // 0..1
+  isDrifting: false,
+  isBoosting: false,
 };
 
 const P = {
-  accel: 14,
-  reverseAccel: 8,
-  naturalDecel: 0.93,
-  maxSpeed: 30,
-  yawAccel: 3.5,
-  yawDecel: 0.88,
-  maxYaw: 1.4,
-  altRate: 12,
+  accel: 18,
+  reverseAccel: 10,
+  naturalDecel: 0.94,
+  maxSpeed: 38,
+  boostMaxSpeed: 64,
+  boostAccelMult: 1.9,
+  yawAccel: 3.6,
+  yawDecel: 0.86,
+  maxYaw: 1.6,
+  driftYawMult: 1.6,      // 드리프트 중 yaw 가속 증가
+  driftSlipAccel: 12,     // 드리프트 측면 슬립 가속
+  driftSlipDecay: 0.92,
+  altRate: 14,
+  boostDrain: 0.55,       // /sec
+  boostRegen: 0.22,       // /sec
 };
 
-const dronePosCallback = new CallbackProperty(() => {
-  return Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt);
-}, false);
-
+const dronePosCallback = new CallbackProperty(
+  () => Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt),
+  false,
+);
 const droneOriCallback = new CallbackProperty(() => {
   const pos = Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt);
-  const hpr = new HeadingPitchRoll(drone.heading, 0, 0);
+  // 드리프트 시 약간의 roll 추가, 가속 시 약간의 pitch 다운
+  const roll = drone.isDrifting ? CMath.clamp(-drone.yawSpeed * 0.35, -0.45, 0.45) : 0;
+  const pitch = -drone.speed / P.boostMaxSpeed * 0.18;
+  const hpr = new HeadingPitchRoll(drone.heading, pitch, roll);
   return Transforms.headingPitchRollQuaternion(pos, hpr);
 }, false);
 
-const droneEntity = viewer.entities.add({
+// 드론 visual — 일단 빨간 박스 (GLTF로 교체 가능)
+viewer.entities.add({
   position: dronePosCallback as unknown as ConstantPositionProperty,
   orientation: droneOriCallback as any,
-  viewFrom: new Cartesian3(0, -60, 30),
   box: {
-    dimensions: new Cartesian3(4, 4, 1.2),
-    material: Color.RED.withAlpha(0.95),
+    dimensions: new Cartesian3(3.2, 4.6, 1.0),
+    material: Color.fromCssColorString("#ff3344").withAlpha(0.92),
     outline: true,
     outlineColor: Color.BLACK,
   },
 });
 
-viewer.trackedEntity = droneEntity;
-
+/* -------------------------------------------------------------
+ * Input
+ * ------------------------------------------------------------- */
 const input: Record<string, boolean> = {};
 window.addEventListener("keydown", (e) => {
   input[e.key.toLowerCase()] = true;
+  // 스크롤 방지
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+  }
 });
 window.addEventListener("keyup", (e) => {
   input[e.key.toLowerCase()] = false;
 });
 const press = (...keys: string[]) => keys.some((k) => input[k.toLowerCase()]);
 
+/* -------------------------------------------------------------
+ * Touch UI — 가상 조이스틱 + BOOST/DRIFT/고도 버튼
+ *  데스크탑 키보드와 같은 `input` 레코드의 키를 토글해서
+ *  게임 루프 코드 변경 없이 통일된 입력 추상화 유지.
+ * ------------------------------------------------------------- */
+const isTouch =
+  "ontouchstart" in window ||
+  (navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 0);
+
+if (isTouch) {
+  document.body.classList.add("touch-active");
+}
+
+// 가상 조이스틱 — touchstart/move/end로 (-1..+1, -1..+1) 입력 산출
+const joystick = document.getElementById("joystick");
+const joystickKnob = document.getElementById("joystick-knob");
+if (joystick && joystickKnob) {
+  const MAX_KNOB_OFFSET = 45; // px
+  const DEADZONE = 0.22;
+  let activeTouchId: number | null = null;
+  let joystickCenter = { x: 0, y: 0 };
+
+  const setJoystickKeys = (nx: number, ny: number) => {
+    // nx, ny: -1..+1 (ny 양수 = 위로 = 전진)
+    input["w"] = ny > DEADZONE;
+    input["s"] = ny < -DEADZONE;
+    input["a"] = nx < -DEADZONE;
+    input["d"] = nx > DEADZONE;
+  };
+
+  const updateJoystick = (clientX: number, clientY: number) => {
+    const dx = clientX - joystickCenter.x;
+    const dy = clientY - joystickCenter.y;
+    const dist = Math.hypot(dx, dy);
+    const clamped = Math.min(dist, MAX_KNOB_OFFSET);
+    const angle = Math.atan2(dy, dx);
+    const knobX = Math.cos(angle) * clamped;
+    const knobY = Math.sin(angle) * clamped;
+    joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+    const nx = knobX / MAX_KNOB_OFFSET;
+    const ny = -knobY / MAX_KNOB_OFFSET; // 화면 위 = -y → 전진
+    setJoystickKeys(nx, ny);
+  };
+
+  const releaseJoystick = () => {
+    activeTouchId = null;
+    joystickKnob.style.transform = "translate(0px, 0px)";
+    joystick.classList.remove("dragging");
+    setJoystickKeys(0, 0);
+  };
+
+  joystick.addEventListener(
+    "touchstart",
+    (ev) => {
+      ev.preventDefault();
+      const t = ev.changedTouches[0];
+      const rect = joystick.getBoundingClientRect();
+      joystickCenter = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+      activeTouchId = t.identifier;
+      joystick.classList.add("dragging");
+      updateJoystick(t.clientX, t.clientY);
+    },
+    { passive: false },
+  );
+
+  joystick.addEventListener(
+    "touchmove",
+    (ev) => {
+      if (activeTouchId === null) return;
+      ev.preventDefault();
+      for (const t of Array.from(ev.changedTouches)) {
+        if (t.identifier === activeTouchId) {
+          updateJoystick(t.clientX, t.clientY);
+          break;
+        }
+      }
+    },
+    { passive: false },
+  );
+
+  const endHandler = (ev: TouchEvent) => {
+    if (activeTouchId === null) return;
+    for (const t of Array.from(ev.changedTouches)) {
+      if (t.identifier === activeTouchId) {
+        releaseJoystick();
+        break;
+      }
+    }
+  };
+  joystick.addEventListener("touchend", endHandler);
+  joystick.addEventListener("touchcancel", endHandler);
+
+  // 마우스로도 조작 가능 (개발/디버깅 편의)
+  let mouseDown = false;
+  joystick.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    const rect = joystick.getBoundingClientRect();
+    joystickCenter = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+    mouseDown = true;
+    joystick.classList.add("dragging");
+    updateJoystick(ev.clientX, ev.clientY);
+  });
+  window.addEventListener("mousemove", (ev) => {
+    if (!mouseDown) return;
+    updateJoystick(ev.clientX, ev.clientY);
+  });
+  window.addEventListener("mouseup", () => {
+    if (!mouseDown) return;
+    mouseDown = false;
+    releaseJoystick();
+  });
+}
+
+// 액션 버튼 — key 매핑으로 input 레코드 토글
+const bindHoldButton = (id: string, key: string) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const down = (ev: Event) => {
+    ev.preventDefault();
+    input[key] = true;
+    el.classList.add("pressed");
+  };
+  const up = (ev: Event) => {
+    ev.preventDefault();
+    input[key] = false;
+    el.classList.remove("pressed");
+  };
+  el.addEventListener("touchstart", down, { passive: false });
+  el.addEventListener("touchend", up);
+  el.addEventListener("touchcancel", up);
+  el.addEventListener("mousedown", down);
+  el.addEventListener("mouseup", up);
+  el.addEventListener("mouseleave", up);
+};
+bindHoldButton("btn-boost", "shift");
+bindHoldButton("btn-drift", " ");
+bindHoldButton("btn-alt-up", "e");
+bindHoldButton("btn-alt-down", "q");
+
+/* -------------------------------------------------------------
+ * HUD
+ * ------------------------------------------------------------- */
 const speedEl = document.getElementById("hud-speed");
 const altEl = document.getElementById("hud-alt");
 const headingEl = document.getElementById("hud-heading");
+const boostFillEl = document.getElementById("hud-boost-fill") as HTMLElement | null;
+const hudEl = document.getElementById("hud");
 
+/* -------------------------------------------------------------
+ * Game loop — runs once per frame via Cesium preRender
+ * ------------------------------------------------------------- */
 let lastTime = performance.now();
 viewer.scene.preRender.addEventListener(() => {
   const now = performance.now();
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
 
+  // --- Drift / Boost state flags ---
+  drone.isDrifting = press(" ", "space") && Math.abs(drone.speed) > 6;
+  drone.isBoosting = press("shift") && drone.boost > 0.02 && drone.speed > 0;
+
+  // --- Yaw (회전) ---
+  const yawMult = drone.isDrifting ? P.driftYawMult : 1.0;
+  const maxYaw = P.maxYaw * yawMult;
   if (press("a", "arrowleft")) {
-    drone.yawSpeed = Math.max(drone.yawSpeed - P.yawAccel * dt, -P.maxYaw);
+    drone.yawSpeed = Math.max(drone.yawSpeed - P.yawAccel * yawMult * dt, -maxYaw);
   } else if (press("d", "arrowright")) {
-    drone.yawSpeed = Math.min(drone.yawSpeed + P.yawAccel * dt, P.maxYaw);
+    drone.yawSpeed = Math.min(drone.yawSpeed + P.yawAccel * yawMult * dt, maxYaw);
   } else {
     drone.yawSpeed *= Math.pow(P.yawDecel, dt * 60);
   }
   drone.heading += drone.yawSpeed * dt;
 
+  // --- Forward / reverse ---
+  const accel = P.accel * (drone.isBoosting ? P.boostAccelMult : 1);
+  const cap = drone.isBoosting ? P.boostMaxSpeed : P.maxSpeed;
   if (press("w", "arrowup")) {
-    drone.speed = Math.min(drone.speed + P.accel * dt, P.maxSpeed);
+    drone.speed = Math.min(drone.speed + accel * dt, cap);
   } else if (press("s", "arrowdown")) {
     drone.speed = Math.max(drone.speed - P.reverseAccel * dt, -P.maxSpeed * 0.4);
   } else {
     drone.speed *= Math.pow(P.naturalDecel, dt * 60);
     if (Math.abs(drone.speed) < 0.05) drone.speed = 0;
   }
+  // 부스트 최대 속도 위로 가 있으면 천천히 끌어내림
+  if (!drone.isBoosting && drone.speed > P.maxSpeed) {
+    drone.speed = Math.max(P.maxSpeed, drone.speed - 20 * dt);
+  }
 
+  // --- Drift slip (측면 슬립) ---
+  if (drone.isDrifting) {
+    drone.lateralSpeed += -drone.yawSpeed * P.driftSlipAccel * dt;
+  }
+  drone.lateralSpeed *= Math.pow(P.driftSlipDecay, dt * 60);
+
+  // --- Altitude (Q/E) ---
   if (press("q")) drone.alt = Math.max(15, drone.alt - P.altRate * dt);
   if (press("e")) drone.alt = Math.min(500, drone.alt + P.altRate * dt);
 
-  const dx = Math.sin(drone.heading) * drone.speed * dt;
-  const dy = Math.cos(drone.heading) * drone.speed * dt;
-  drone.lat += dy / 111111;
-  drone.lng += dx / (111111 * Math.cos((drone.lat * Math.PI) / 180));
+  // --- Boost gauge ---
+  if (drone.isBoosting) drone.boost = Math.max(0, drone.boost - P.boostDrain * dt);
+  else drone.boost = Math.min(1, drone.boost + P.boostRegen * dt);
 
+  // --- Position update (heading 방향 + 측면) ---
+  const sinH = Math.sin(drone.heading);
+  const cosH = Math.cos(drone.heading);
+  const forwardDx = sinH * drone.speed * dt;
+  const forwardDy = cosH * drone.speed * dt;
+  const lateralDx = cosH * drone.lateralSpeed * dt;
+  const lateralDy = -sinH * drone.lateralSpeed * dt;
+  const totalDx = forwardDx + lateralDx;
+  const totalDy = forwardDy + lateralDy;
+  drone.lat += totalDy / 111111;
+  drone.lng += totalDx / (111111 * Math.cos((drone.lat * Math.PI) / 180));
+
+  // --- HUD ---
   if (speedEl) speedEl.textContent = Math.round(Math.abs(drone.speed) * 3.6).toString();
   if (altEl) altEl.textContent = Math.round(drone.alt).toString();
   if (headingEl)
     headingEl.textContent = Math.round(((drone.heading * 180) / Math.PI + 360) % 360).toString();
+  if (boostFillEl) boostFillEl.style.width = `${(drone.boost * 100).toFixed(0)}%`;
+  if (hudEl) {
+    hudEl.classList.toggle("drifting", drone.isDrifting);
+    hudEl.classList.toggle("boosting", drone.isBoosting);
+  }
+
+  /* -----------------------------------------------------------
+   * 3인칭 추적 카메라
+   * - 드론 뒤(heading 반대) 8m, 위 3.5m
+   * - 부스트 중에는 약간 더 멀리·낮게 → 속도감
+   * - lookAt 으로 부드럽게 따라보기
+   * --------------------------------------------------------- */
+  const dronePos = Cartesian3.fromDegrees(drone.lng, drone.lat, drone.alt);
+  const enuTransform = Transforms.eastNorthUpToFixedFrame(dronePos);
+
+  const backDist = drone.isBoosting ? 11 : 8;
+  const upDist = drone.isBoosting ? 2.8 : 3.5;
+  // ENU local: east=+x, north=+y, up=+z
+  // forward direction in ENU = (sin(h), cos(h), 0)
+  const localOffset = new Cartesian3(
+    -Math.sin(drone.heading) * backDist,
+    -Math.cos(drone.heading) * backDist,
+    upDist,
+  );
+  const cameraWorldPos = Matrix4.multiplyByPoint(enuTransform, localOffset, new Cartesian3());
+
+  // 보는 지점은 드론 살짝 앞 + 위
+  const lookForward = new Cartesian3(
+    Math.sin(drone.heading) * 3,
+    Math.cos(drone.heading) * 3,
+    1.2,
+  );
+  const lookTarget = Matrix4.multiplyByPoint(enuTransform, lookForward, new Cartesian3());
+
+  const dir = Cartesian3.subtract(lookTarget, cameraWorldPos, new Cartesian3());
+  Cartesian3.normalize(dir, dir);
+  const up = Cartesian3.normalize(cameraWorldPos, new Cartesian3()); // 지구 중심→카메라 방향 = 대략 위
+  const right = Cartesian3.cross(dir, up, new Cartesian3());
+  Cartesian3.normalize(right, right);
+  const realUp = Cartesian3.cross(right, dir, new Cartesian3());
+  Cartesian3.normalize(realUp, realUp);
+
+  viewer.camera.setView({
+    destination: cameraWorldPos,
+    orientation: {
+      direction: dir,
+      up: realUp,
+    },
+  });
 });
 
-console.log("[Drone Rider v0.6 — Cesium] 드론 + 컨트롤러 + 자동 추적 카메라");
+console.log("[Drone Rider v0.7 — Cesium] 3인칭 카메라 · 드리프트 · 부스트");

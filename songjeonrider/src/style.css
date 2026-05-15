@@ -73,3 +73,196 @@ html, body {
   font-size: 11px;
   color: #888;
 }
+
+.hud-boost-wrap {
+  margin-top: 8px;
+}
+.hud-boost-label {
+  color: #ffb84d;
+  font-size: 11px;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.hud-boost-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 184, 77, 0.3);
+}
+#hud-boost-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff6b00 0%, #ffb84d 50%, #ffe1a8 100%);
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.6);
+  transition: width 80ms linear;
+}
+#hud.drifting {
+  border-color: rgba(0, 220, 255, 0.7);
+  box-shadow: 0 0 18px rgba(0, 220, 255, 0.35);
+}
+#hud.boosting #hud-boost-fill {
+  animation: boostPulse 0.4s infinite alternate;
+}
+@keyframes boostPulse {
+  from { box-shadow: 0 0 8px rgba(255, 140, 0, 0.6); }
+  to   { box-shadow: 0 0 20px rgba(255, 200, 80, 1); }
+}
+
+/* =============================================================
+ * Mobile / touch UI — 가상 조이스틱 + BOOST / DRIFT / 고도 버튼
+ *   기본은 숨김. <body>에 .touch-active 클래스가 붙으면 표시.
+ *   main.ts가 'ontouchstart' 감지로 자동 토글.
+ * ============================================================= */
+#touch-ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  display: none;
+}
+body.touch-active #touch-ui { display: block; }
+
+/* HUD 위치 조정 — 터치 모드에서는 오른쪽 위로 (오른손 엄지 영역 안 가리게) */
+body.touch-active #hud {
+  right: 12px;
+  bottom: auto;
+  top: 12px;
+}
+body.touch-active #hint {
+  display: none;
+}
+
+/* --- 가상 조이스틱 (왼쪽 아래) --- */
+.joystick {
+  position: absolute;
+  left: max(env(safe-area-inset-left, 0px), 24px);
+  bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.12) 60%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border: 2px solid rgba(155, 188, 255, 0.45);
+  box-shadow:
+    inset 0 0 28px rgba(155, 188, 255, 0.18),
+    0 0 18px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  margin-left: -30px;
+  margin-top: -30px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #d0e1ff 0%,
+    #6f9bff 60%,
+    #2a4fa0 100%
+  );
+  box-shadow:
+    0 0 18px rgba(120, 160, 255, 0.55),
+    0 4px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.06s linear;
+  pointer-events: none;
+}
+.joystick.dragging {
+  border-color: rgba(155, 220, 255, 0.85);
+  box-shadow:
+    inset 0 0 36px rgba(155, 220, 255, 0.28),
+    0 0 26px rgba(80, 180, 255, 0.45);
+}
+
+/* --- 오른쪽 액션 버튼 클러스터 --- */
+.action-cluster {
+  position: absolute;
+  right: max(env(safe-area-inset-right, 0px), 24px);
+  bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  pointer-events: auto;
+}
+.alt-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.btn-alt {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(20, 28, 40, 0.78);
+  color: #cfd8ec;
+  font-size: 22px;
+  font-weight: bold;
+  font-family: inherit;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  cursor: pointer;
+}
+.btn-alt:active,
+.btn-alt.pressed {
+  background: rgba(60, 90, 130, 0.9);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(120, 160, 255, 0.5);
+}
+.btn-action {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  font-family: inherit;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  cursor: pointer;
+  transition: transform 0.05s ease-out, box-shadow 0.1s linear;
+}
+.btn-drift {
+  background: radial-gradient(circle at 35% 30%, #58e0ff 0%, #1da0c8 55%, #0a4f70 100%);
+  box-shadow:
+    0 0 18px rgba(40, 200, 255, 0.55),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}
+.btn-boost {
+  background: radial-gradient(circle at 35% 30%, #ffd76b 0%, #ff8a1d 55%, #a13b00 100%);
+  box-shadow:
+    0 0 20px rgba(255, 140, 0, 0.65),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}
+.btn-action:active,
+.btn-action.pressed {
+  transform: scale(0.93);
+}
+.btn-drift:active,
+.btn-drift.pressed {
+  box-shadow:
+    0 0 30px rgba(80, 220, 255, 0.95),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}
+.btn-boost:active,
+.btn-boost.pressed {
+  box-shadow:
+    0 0 30px rgba(255, 200, 80, 1),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}

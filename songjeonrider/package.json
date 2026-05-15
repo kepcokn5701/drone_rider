@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "gen:html": "node scripts/gen-html.js",
+    "predev": "node scripts/gen-html.js",
+    "prebuild": "node scripts/gen-html.js",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview"
